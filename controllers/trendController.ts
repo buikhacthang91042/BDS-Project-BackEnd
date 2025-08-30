@@ -1,28 +1,24 @@
-import { success } from "zod";
-import Listing from "../models/Listing";
 import { Response, Request } from "express";
+import pool from "../config/db";
+
 export const getHotSpot = async (req: Request, res: Response) => {
   try {
     const { province } = req.query;
-    let matchStage: any = {};
-    if (province) {
-      matchStage = { province: province };
-    }
-    const hotspot = await Listing.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: province ? "$district" : "$province",
-          count: { $sum: 1 },
-          avgPrice: { $avg: "$price" },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $limit: 10 },
-    ]);
+    let query = `
+      SELECT ${province ? "district" : "province"} AS location,
+             COUNT(*) AS count,
+             AVG(price) AS avg_price
+      FROM listings
+      ${province ? "WHERE province = $1" : ""}
+      GROUP BY ${province ? "district" : "province"}
+      ORDER BY count DESC
+      LIMIT 10;
+    `;
 
-    res.json({ success: true, data: hotspot });
+    const result = await pool.query(query, province ? [province] : []);
+    res.json({ success: true, data: result.rows });
   } catch (error: any) {
+    console.error("getHotSpot error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -30,29 +26,22 @@ export const getHotSpot = async (req: Request, res: Response) => {
 export const getPriceTrends = async (req: Request, res: Response) => {
   try {
     const { province } = req.query;
+    let query = `
+      SELECT 
+        EXTRACT(YEAR FROM date_scraped) AS year,
+        EXTRACT(MONTH FROM date_scraped) AS month,
+        ${province ? "district" : "province"} AS location,
+        AVG(price) AS avg_price
+      FROM listings
+      ${province ? "WHERE province = $1" : ""}
+      GROUP BY year, month, location
+      ORDER BY year ASC, month ASC;
+    `;
 
-    let matchStage: any = {};
-    if (province) {
-      matchStage = { province: province };
-    }
-
-    const trends = await Listing.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: {
-            year: { $year: "$dateScraped" },
-            month: { $month: "$dateScraped" },
-            location: province ? "$district" : "$province",
-          },
-          avgPrice: { $avg: "$price" },
-        },
-      },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-    ]);
-
-    res.json({ success: true, data: trends });
+    const result = await pool.query(query, province ? [province] : []);
+    res.json({ success: true, data: result.rows });
   } catch (error: any) {
+    console.error("getPriceTrends error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -1,29 +1,41 @@
-import mongoose from "mongoose";
-import Listing from "./models/Listing"; // chỉnh lại path tới model Listing của bạn
 import dotenv from "dotenv";
+import pool from "./config/db";
 dotenv.config();
 
 async function cleanLocations() {
   try {
-    await mongoose.connect(process.env.MONGO_URI as string);
-    console.log("✅ MongoDB connected");
+    const client = await pool.connect();
+    console.log("✅ PostgreSQL connected");
 
-    const listings = await Listing.find({});
-    console.log(`🔎 Tìm thấy ${listings.length} listings cần xử lý`);
+    const res = await client.query(
+      "SELECT id, province, district, ward FROM listings"
+    );
+    console.log(`🔎 Tìm thấy ${res.rows.length} listings cần xử lý`);
 
-    for (const listing of listings) {
-      if (listing.location) {
-        const cleaned = listing.location.replace(/^\.+/, "").trim();
-        if (cleaned !== listing.location) {
-          listing.location = cleaned;
-          await listing.save();
-          console.log(`🧹 Đã clean: ${cleaned}`);
-        }
+    for (const row of res.rows) {
+      // Clean từng field
+      const cleanedProvince = row.province?.replace(/^\.+/, "").trim();
+      const cleanedDistrict = row.district?.replace(/^\.+/, "").trim();
+      const cleanedWard = row.ward?.replace(/^\.+/, "").trim();
+
+      if (
+        cleanedProvince !== row.province ||
+        cleanedDistrict !== row.district ||
+        cleanedWard !== row.ward
+      ) {
+        await client.query(
+          `UPDATE listings
+           SET province = $1, district = $2, ward = $3
+           WHERE id = $4`,
+          [cleanedProvince, cleanedDistrict, cleanedWard, row.id]
+        );
+        console.log(`🧹 Đã clean: ${row.id}`);
       }
     }
 
     console.log("🎉 Hoàn tất dọn dữ liệu location!");
-    await mongoose.disconnect();
+    client.release();
+    await pool.end();
   } catch (err) {
     console.error("❌ Lỗi:", err);
   }

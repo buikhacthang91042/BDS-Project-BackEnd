@@ -1,17 +1,20 @@
+// server.ts
+import dotenv from "dotenv";
+dotenv.config();
 import express, { Express } from "express";
 import cors from "cors";
-import connectDB from "./config/db";
-import dotenv from "dotenv";
+import passport from "./config/passportConfig";
 import authRoute from "./routes/authRoute";
 import trendsRoute from "./routes/trendsRoute";
+import mapRouter from "./routes/mapRouter";
 import scrape from "./cron/scraperJob";
-dotenv.config();
-connectDB();
+
 const app: Express = express();
 const allowedOrigins: string[] = [
   "http://localhost:3000",
   "https://bds-project-dusky.vercel.app",
 ];
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -26,11 +29,13 @@ app.use(
     credentials: true,
   })
 );
+app.use(passport.initialize());
 app.use(express.json());
 
 app.use("/api/auth", authRoute);
 app.use("/api/trends", trendsRoute);
+app.use("/api/map", mapRouter);
 
 const PORT: number = parseInt(process.env.PORT || "5001", 10);
-app.listen(PORT, () => console.log("Sever is running on port " + PORT));
+app.listen(PORT, () => console.log("Server is running on port " + PORT));
 scrape();
